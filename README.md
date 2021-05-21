@@ -95,7 +95,7 @@ When `sn_authd` sends a notification to each of the subscribers it also uses JSO
 
 ## Download
 
-The latest version of the Safe Authenticator daemon can be downloaded from the [releases page](https://github.com/maidsafe/sn_api/releases/latest). Once it's downloaded and unpacked, you can follow the steps in this guide by starting from the [Launching the sn_authd](#launching-the-sn_authd) section further down in this document.
+The latest version of the Safe Authenticator daemon can be downloaded from the [releases page](https://github.com/maidsafe/sn_authd/releases/latest). Once it's downloaded and unpacked, you can follow the steps in this guide by starting from the [Launching the sn_authd](#launching-the-sn_authd) section further down in this document.
 
 If otherwise you prefer to build the Safe Authenticator daemon from source code, please follow the instructions in the next two section below.
 
@@ -105,8 +105,8 @@ In order to build this application from source code you need to make sure you ha
 
 Once Rust and its toolchain are installed, run the following commands to clone this repository and build the `sn_authd` (the build process may take several minutes the first time you run it on this crate):
 ```shell
-$ git clone https://github.com/maidsafe/sn_api.git
-$ cd sn_api/sn_authd
+$ git clone https://github.com/maidsafe/sn_authd.git
+$ cd sn_authd
 $ cargo build
 ```
 
