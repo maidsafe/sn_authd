@@ -1,71 +1,159 @@
-# The Safe API
+# Safe Authenticator daemon
 
 | [MaidSafe website](https://maidsafe.net) | [Safe Dev Forum](https://forum.safedev.org) | [Safe Network Forum](https://safenetforum.org) |
 |:----------------------------------------:|:-------------------------------------------:|:----------------------------------------------:|
 
 ## Table of contents
 
-- [The Safe API](#the-safe-api)
+- [Safe Authenticator daemon](#safe-authenticator-daemon)
   - [Table of contents](#table-of-contents)
   - [Description](#description)
-  - [The Safe API (sn_api)](#the-safe-api-sn_api)
-  - [The Safe Network CLI](#the-safe-network-cli)
-  - [The Authenticator daemon](#the-authenticator-daemon)
-  - [JSON-RPC and QUIC](#json-rpc-and-quic)
-  - [Further Help](#further-help)
+  - [Download](#download)
+  - [Build](#build)
+  - [Launching the sn_authd](#launching-the-sn_authd)
+    - [Start](#start)
+    - [Stop](#stop)
+    - [Restart](#restart)
   - [License](#license)
   - [Contributing](#contributing)
 
 ## Description
 
-In this repository you'll find all that's needed by any application which intends to connect and read/write data on [The Safe Network](https://safenetwork.tech).
+This crate implements a Safe Authenticator service which runs as a daemon.
 
-A Rust Safe application can make use of the `sn_api` crate to be able to not only read/write data on the Safe Network but also to send/receive authorisation requests to the Safe Authenticator (see https://hub.safedev.org/discover for additional info of the Authenticator).
+The `sn_authd` exposes its services as a [JSON-RPC](https://www.jsonrpc.org/) interface, over [QUIC](https://en.wikipedia.org/wiki/QUIC), allowing applications and users to connect to create Safes, unlock it using its credentials (passphrase and password), authorise applications which need to store data on the network on behalf of the user, as well as revoke permissions previously granted to applications.
 
-![Safe app authorisation flow](misc/auth-flow-diagram.png)
+It keeps in memory a list of authorisation requests pending of approval/denial, as well as the list of the registered subscribers that the notifications shall be sent to.
 
-In addition to the `sn_api` crate to be used by Rust applications, this repository contains a couple of applications ([sn_authd](sn_authd) and [sn_cli](sn_cli)) which are required depending on the type of Safe application you are developing, use case, and/or if you are just a user of the Safe Network willing to interact with it using a simple command line interface.
+![authd software architecture](/misc/authd-software.png)
 
-The following diagram depicts how each of the artifacts of this repository fit in the Safe applications ecosystem. You can find more information about each of them further below in the next section of this document.
+The following are few examples of JSON-RPC requests/responses exchanged with `sn_authd` over QUIC:
+JSON-RPC call to log in:
+```
+Request: {
+  "jsonrpc": "2.0",
+  "method": "login",
+  "params": ["<passphrase>", "<password>"],
+  "id": 743533851
+}
 
-![Safe API ecosystem](misc/safe-api-ecosystem.png)
+Response: {
+  "jsonrpc": "2.0",
+  "result": "Logged in successfully!",
+  "id": 743533851
+}
+```
 
-## The Safe API ([sn_api](sn_api))
+JSON-RPC call to obtain list of already authorised applications:
+```
+Request: {
+  "jsonrpc": "2.0",
+  "method": "authed-apps",
+  "params": null,
+  "id": 2294806509
+}
 
-The [sn_api](sn_api) is a Rust crate which exposes the Safe API with all the functions needed to communicate with the Safe Network and the Safe Authenticator. If you are developing a Rust application for Safe, this is all you need as a dependency from your app.
+Response: {
+  "jsonrpc": "2.0",
+  "result": [{
+      "app_permissions": {
+          "read_balance": true,
+          "perform_mutations": true,
+          "transfer_token": true
+      },
+      "containers": {},
+      "id": "net.maidsafe.cli",
+      "name": "SAFE CLI",
+      "own_container": false,
+      "vendor": "MaidSafe.net Ltd"
+  }],
+  "id": 2294806509
+}
+```
 
+When `sn_authd` sends a notification to each of the subscribers it also uses JSON-RPC over QUIC. The following is an example of a JSON-RPC message corresponding to an authorisation request notification sent from the `sn_authd` to a subscriber:
+```
+{
+  jsonrpc: "2.0",
+  method: "auth-req-notif",
+  params: {
+      "app_id": "net.maidsafe.cli",
+      "app_name": "SAFE CLI",
+      "app_permissions": {
+          "read_balance": true,
+          "perform_mutations": true,
+          "transfer_token": true
+      },
+      "app_vendor": "MaidSafe.net Ltd",
+      "containers": {},
+      "own_container": false,
+      "req_id": 2039120779
+  },
+  id: 1195581342
+}
+```
 
-## The Safe Network CLI
+## Download
 
-The [sn_cli](sn_cli) is a Rust application which implements a CLI (Command Line Interface) for the Safe Network.
+The latest version of the Safe Authenticator daemon can be downloaded from the [releases page](https://github.com/maidsafe/sn_api/releases/latest). Once it's downloaded and unpacked, you can follow the steps in this guide by starting from the [Launching the sn_authd](#launching-the-sn_authd) section further down in this document.
 
-![Safe CLI](misc/safe-cli-animation.svg)
+If otherwise you prefer to build the Safe Authenticator daemon from source code, please follow the instructions in the next two section below.
 
-The Safe CLI provides all the tools necessary to interact with the Safe Network, including storing and browsing data of any kind, following links that are contained in the data and using their addresses on the network, using safecoin wallets, and much more. Using the CLI users have access to any type of operation that can be made on the Safe Network and the data stored on it.
+## Build
 
-If you are just a Safe user, or a system engineer creating automated scripts, this application provides you with all you need to interact with the Safe Network. Please refer to [The Safe CLI User Guide](sn_cli/README.md) to learn how to start using it.
+In order to build this application from source code you need to make sure you have `rustc v1.48.0` (or higher) installed. Please take a look at this [notes about Rust installation](https://www.rust-lang.org/tools/install) if you need help with installing it. We recommend you install it with `rustup` which will install the `cargo` tool which this guide makes use of.
 
-## The Authenticator daemon
+Once Rust and its toolchain are installed, run the following commands to clone this repository and build the `sn_authd` (the build process may take several minutes the first time you run it on this crate):
+```shell
+$ git clone https://github.com/maidsafe/sn_api.git
+$ cd sn_api/sn_authd
+$ cargo build
+```
 
-The [sn_authd](sn_authd) is a Safe Authenticator implementation which runs in the background a daemon on Linux and Mac, or as a service in Windows platforms.
+Once it's built you can find the `sn_authd` executable at `target/debug/`.
 
-The Safe Authenticator gives complete control over the type of access and permissions that are granted to the applications used by the Safe users. Any application that is intending to write data on the Network on behalf of the user needs to get credentials which are authorised by the user, and the Safe Authenticator is the component which facilitates such mechanism.
+## Launching the sn_authd
 
-This application is normally shipped as part of the package of an Authenticator GUI, like the [Safe Network Application](), and therefore Safe users and Safe app developers don't need it or worry about since the Safe API already provides functions to interact with the `sn_authd`, and the Safe CLI also has commands to do so.
+The `sn_authd` can be launched with:
+1. `cargo run -- <list of arguments/options>`
+2. or directly with the executable generated: `./target/debug/sn_authd <list of arguments/options>`
 
-## JSON-RPC and QUIC
+As any other shell application, the `sn_authd` supports the `--help` argument which outputs a help message with information on the supported arguments and options, you can get this help message with:
+```
+$ sn_authd --help
+```
 
-One last crate found in this repository is the [qjsonrpc](qjsonrpc). This crate provides the implementation of [JSON-RPC](https://www.jsonrpc.org/) over [QUIC](https://en.wikipedia.org/wiki/QUIC), which is required by the Authenticator daemon communication protocol.
+This application supports only a few commands which are required to start it as a daemon, stop and restart it.
 
-This crate exposes a minimised set of functions which are used by other crates to implement the Authenticator daemon communication protocol. On one hand the `sn_api` makes use of it to be able to send JSON-RPC messages to the `authd` over QUIC, and on the other hand the `sn_authd` makes use of it to accept those requests from clients, generating and sending back a JSON-RPC response over QUIC. Please refer to the [sn_authd README](sn_authd/README.md) to see some examples of these type of requests/responses.
+### Start
 
-## Further Help
+In order to start the Safe Authenticator daemon (`sn_authd`) we simply need to run the following command:
+```shell
+$ sn_authd start
+Starting Safe Authenticator daemon (sn_authd)...
+sn_authd started (PID: <pid>)
+```
 
-You can discuss development-related questions on the [Safe Dev Forum](https://forum.safedev.org/).
-If you are just starting to develop an application for the Safe Network, it's very advisable to visit the [Safe Network Dev Hub](https://hub.safedev.org) where you will find a lot of relevant information.
+### Stop
+
+To stop the Safe Authenticator daemon (`sn_authd`) we just run the following command (on Windows make sure you use the `sn_authd.exe` executable):
+```shell
+$ sn_authd stop
+Stopping Safe Authenticator daemon (sn_authd)...
+Success, sn_authd (PID: <pid>) stopped!
+```
+
+### Restart
+
+We can also restart the Safe Authenticator daemon (`sn_authd`) if it's already running, with the following command (on Windows make sure you use the `sn_authd.exe` executable):
+```shell
+$ sn_authd restart
+Stopping Safe Authenticator daemon (sn_authd)...
+Success, sn_authd (PID: <pid>) stopped!
+Starting Safe Authenticator daemon (sn_authd)...
+```
 
 ## License
-
 This Safe Network library is dual-licensed under the Modified BSD ([LICENSE-BSD](LICENSE-BSD) https://opensource.org/licenses/BSD-3-Clause) or the MIT license ([LICENSE-MIT](LICENSE-MIT) https://opensource.org/licenses/MIT) at your option.
 
 ## Contributing
